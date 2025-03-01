@@ -13,17 +13,15 @@ router.get("/:userId/:unique",check, async (req:AuthRequest, res):Promise<void> 
     }
     const id = req.user.id;
     const { userId, unique } = req.params;
-    if(id==userId){
+    if(id!==userId){
       res.status(401).json({message:"UnAuthorized"});
       return;
     }
     const now = new Date();
     const last24Hours = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-    const metrics = await Metric.find({
-      unique_key:unique,
-      timestamp: { $gte: last24Hours },
-    });
+    const metrics = await Metric.find({ unique_key:unique,
+      timestamp: { $gte: last24Hours }});
 
     res.json({ metrics });
   } catch (error) {

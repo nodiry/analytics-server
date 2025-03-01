@@ -34,11 +34,12 @@ router.post("/", check, async (req, res):Promise<void> => {
      return;}
 
     const unique_key = generateUniqueKey(url);
-    const newWebsite = new Website({ dev, url, desc, unique_key });
+    const newWebsite = new Website({ dev, url:url, desc, unique_key });
 
     await newWebsite.save();
     res.status(201).json({ message: "Website added", unique_key });
   } catch (error) {
+    console.log(error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -7,6 +7,7 @@ import  {check}  from '../middleware/auth';
 import { Quick } from '../models/quick';
 import { generatePasscode } from '../utils/key_maker';
 import { send } from '../middleware/emailer';
+import { Website } from '../models/website';
 interface AuthRequest extends express.Request { user?: { id: string; username: string }}
 const router = express.Router();
 
@@ -64,14 +65,15 @@ router.post("/signin", async (req, res): Promise<void> => {
       await send(user.email, code);
       res.status(200).json({user:"twoauth" });
     }
-    console.log(token);
+    const web = await Website.find({dev:user._id});
+
     res.cookie("Authorization", `Bearer ${token}`, {
       httpOnly: true,
       secure: true,
       sameSite: "strict",
       maxAge: 24 * 60 * 60 * 1000,
     });
-    res.status(200).json({ user });
+    res.status(200).json({ user, web });
   } catch (error) {
     console.error("Signin Error:", error);
     res.status(500).json({ error: "Internal server error" });
@@ -156,27 +158,6 @@ router.delete("/user", check, async (req, res):Promise<void> => {
     res.status(200).json({ message: "Account deleted successfully" });
   } catch (error) {
     res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-
-// ✅ Protected Route to Get User Info
-router.get("/me",check, async (req:AuthRequest, res):Promise<void> => {
-  try {
-    if (!req.user) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
-    const user = req.user;
-    const found = await Dev.findById(user.id).select("-password"); // Exclude password
-
-    if (!found) {
-       res.status(404).json({ error: "User not found" });
-       return }
-
-    res.status(200).json(user);
-  } catch (error) {
-    res.status(401).json({ error: "Invalid token" });
   }
 });
 
