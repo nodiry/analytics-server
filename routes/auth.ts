@@ -64,6 +64,11 @@ router.post("/signin", async (req, res): Promise<void> => {
     if(!user.authorized){
       const code = generatePasscode();
       await send(user.email, code);
+      const quick = new Quick({
+        email:user.email,
+        passcode:code
+      });
+      await quick.save();
       res.status(200).json({user:"twoauth" });
     }
     const web = await Website.find({dev:user._id});
