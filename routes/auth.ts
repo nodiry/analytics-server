@@ -94,13 +94,14 @@ router.post('/twoauth', async(req,res):Promise<void>=>{
       return;
     }
     // Check if it's username or email being passed
-    let found = await Quick.findOneAndDelete({email});
+    let found = await Quick.findOneAndDelete({email:email});
     
     if (!found) {
       res.status(401).json({ error: "Invalid credentials" });
       return;
     }
-    if (found.passcode !== passcode) {
+    const num = Number(passcode);
+    if (found.passcode !== num) {
       res.status(401).json({ error: "Invalid credentials" });
       return;
     }
@@ -112,6 +113,8 @@ router.post('/twoauth', async(req,res):Promise<void>=>{
     const token = jwt.sign({ id: user._id, username: user.username},
       process.env.SAUCE || "chubingo", { expiresIn: "1d" });
 
+      user.authorized = true;
+      await user.save();
     if(user.password) user.password= '';
     res.cookie("Authorization", `Bearer ${token}`, {
       httpOnly: true,
@@ -119,6 +122,7 @@ router.post('/twoauth', async(req,res):Promise<void>=>{
       sameSite: "strict",
       maxAge: 24 * 60 * 60 * 1000,
     });
+
     res.status(200).json({ token, user });
   } catch (error) {
     console.error("Signin Error:", error);
