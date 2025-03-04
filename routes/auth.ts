@@ -8,6 +8,7 @@ import { Quick } from '../models/quick';
 import { generatePasscode } from '../utils/key_maker';
 import { send } from '../middleware/emailer';
 import { Website } from '../models/website';
+import { Metric } from '../models/metric';
 interface AuthRequest extends express.Request { user?: { id: string; username: string }}
 const router = express.Router();
 
@@ -122,43 +123,66 @@ router.post('/twoauth', async(req,res):Promise<void>=>{
 // **User Edit**
 router.put("/user", check, async (req, res):Promise<void> => {
   try {
-    const { username, firstname, lastname, img } = req.body;
+    const { username, firstname, lastname,email, img, password } = req.body;
+    console.log(req.body);
     if (!username) {
       res.status(400).json({ error: "Username required" });
      return };
 
-    const user = await Dev.findOne({ username });
+    let user = await Dev.findOne({ username:username });
+    console.log(user);
     if (!user) {
       res.status(404).json({ error: "User not found" });
       return };
-    
+      const hashed = password ? await hash(password) : user.password;
+    if(!user.password){
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
     user.firstname = firstname || user.firstname;
     user.lastname = lastname || user.lastname;
+    user.email = email || user.email;
     user.img_url = img || user.img_url;
-
+    user.password = hashed || user.password;
+    user.modified_at = new Date();
     await user.save();
-    res.status(200).json({ message: "Profile updated successfully" });
+    res.status(200).json({ user });
   } catch (error) {
     res.status(500).json({ error: "Internal server error" });
   }
 });
-// **Account Deletion**
-router.delete("/user", check, async (req, res):Promise<void> => {
+router.delete("/user", check, async (req, res): Promise<void> => {
   try {
-    const { username } = req.body;
+    const  username  = req.body;
     if (!username) {
       res.status(400).json({ error: "Username required" });
-      return };
+      return;
+    }
 
-    const user = await Dev.findOneAndDelete({ username });
-    if (!user)  {
+    const user = await Dev.findOne({ username });
+    if (!user) {
       res.status(404).json({ error: "User not found" });
-     return }
+      return;
+    }
+
+    // Fetch all websites related to this user
+    const websites = await Website.find({ dev: user._id });
+
+    // Delete all related data concurrently
+    await Promise.all(websites.map(async (website) => {
+      await Metric.deleteMany({ unique_key: website.unique_key });
+      await Website.deleteOne({ unique_key: website.unique_key });
+    }));
+
+    // Finally, delete the user
+    await Dev.deleteOne({ username:username });
 
     res.status(200).json({ message: "Account deleted successfully" });
   } catch (error) {
+    console.error("Error deleting user:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
 
 export default router;

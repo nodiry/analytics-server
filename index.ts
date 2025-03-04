@@ -11,7 +11,7 @@ import cookieParser from "cookie-parser"; // ✅ Import cookie-parser
 import config from './config/config';
 const app = express();
 
-app.use(cors({ origin:'http://localhost:5173', credentials: true}));
+app.use(cors({ origin:'https://analytics.glasscube.io', credentials: true}));
 app.use(morgan("dev")).use(cookieParser())
 .use(express.text()).use(express.json())
 .use(express.urlencoded({ extended: true }));

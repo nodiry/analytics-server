@@ -27,7 +27,6 @@ const websiteSchema = new mongoose.Schema({
         path: String,
         visits: Number,
         avg_loading_time: Number,
-        exit_rate: { type: Number, default: 0 }, // New: Percentage of users who exit from this page
         avg_time_on_page: { type: Number, default: 0 }, // New: Average time spent on the page (in seconds)
       },
     ],

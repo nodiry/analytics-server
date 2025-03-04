@@ -8,7 +8,7 @@ const metricSchema = new mongoose.Schema({
     avgSessionDuration: { type: Number, default: 0 }, // New: Average session duration in seconds
     bounceRate: { type: Number, default: 0 }, // New: Bounce rate percentage
     avgLoadTime: { type: Number, default: 0 },
-    pages: [{ url: String, visits: Number, status: Number }],
+    pages: [{ url: String, visits: Number }],
     referrers: [{ referrer: String, count: Number }],
     deviceStats: {
       desktop: { type: Number, default: 0 }, // New: Desktop users count

@@ -16,9 +16,7 @@ export const check = (req: AuthRequest, res: Response, next: NextFunction): void
       res.status(401).json({ error: "Access denied. No token provided." });
       return;
     }
-
     const decoded = jwt.verify(token, SAUCE) as { id: string; username: string };
-    console.log("Decoded User:", decoded);
     req.user = decoded;
 
     next();
