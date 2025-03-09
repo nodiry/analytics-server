@@ -9,9 +9,63 @@ import { generatePasscode } from '../utils/key_maker';
 import { send } from '../middleware/emailer';
 import { Website } from '../models/website';
 import { Metric } from '../models/metric';
+import { OAuth2Client } from "google-auth-library";
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const SAUCE = process.env.SAUCE || "chubingo";
 interface AuthRequest extends express.Request { user?: { id: string; username: string }}
 const router = express.Router();
+interface GoogleAuthRequest extends express.Request {query: { token?: string }}
 
+router.get("/google", async (req: GoogleAuthRequest, res): Promise<void> => {
+  try {
+    const { token } = req.query;
+    if (!token) {
+      res.status(400).json({ error: "No Google token provided." });
+      return;
+    }
+
+    // ✅ Verify Google token
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    if (!payload || !payload.email) {
+      res.status(400).json({ error: "Invalid Google token" });
+      return;
+    }
+
+    const { email } = payload;
+
+    // ✅ Check if user exists
+    const user = await Dev.findOne({ email });
+    if (!user) {
+      res.status(404).json({ error: "User not found. Please sign up first." });
+      return;
+    }
+
+    // ✅ Generate JWT
+    const authToken = jwt.sign(
+      { id: user._id.toString(), username: user.username },
+      SAUCE,
+      { expiresIn: "1d" }
+    );
+
+    // ✅ Set JWT as cookie
+    res.cookie("Authorization", `Bearer ${authToken}`, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "strict",
+      maxAge: 24 * 60 * 60 * 1000, // 1 day
+    });
+
+    res.status(200).json({ user });
+  } catch (err: unknown) {
+    console.error("Google Sign-In Error:", err);
+    res.status(500).json({ error: "Google authentication failed" });
+  }
+});
 // **Signup**
 router.post("/signup", async (req, res):Promise<void>=> {
   try {
@@ -193,5 +247,62 @@ router.delete("/user", check, async (req, res): Promise<void> => {
   }
 });
 
+router.post("/google", async (req, res):Promise<void> => {
+  try {
+    const { token } = req.body;
+
+    // Verify Google token
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    if (!payload) {
+      res.status(400).json({ error: "Invalid Google token" });
+    return;
+      }
+
+    const { sub, email, name, picture } = payload;
+
+    // Check if user exists
+    let user = await Dev.findOne({ email });
+
+    if (!user && email!==undefined) {
+      // Auto-create user without password
+      user = new Dev({
+        googleId: sub,
+        email,
+        username: email.split("@")[0],
+        firstname: name,
+        image_url: picture
+      });
+      await user.save();
+    }
+     if (!user || !user._id || !user.username) {
+     res.status(500).json({ error: "User creation failed." });
+     return;
+        }
+    // Generate JWT
+    const authToken = jwt.sign(
+      { id: user._id, username: user.username },
+      SAUCE,
+      { expiresIn: "1d" }
+    );
+
+    // Set JWT as cookie for consistency
+    res.cookie("Authorization", `Bearer ${authToken}`, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "strict",
+      maxAge: 24 * 60 * 60 * 1000, // 1 day
+    });
+
+    res.status(200).json({ user });
+  } catch (err) {
+    console.error("Google Auth Error:", err);
+    res.status(500).json({ error: "Google authentication failed" });
+  }
+});
 
 export default router;
