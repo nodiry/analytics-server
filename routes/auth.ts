@@ -14,11 +14,10 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const SAUCE = process.env.SAUCE || "chubingo";
 interface AuthRequest extends express.Request { user?: { id: string; username: string }}
 const router = express.Router();
-interface GoogleAuthRequest extends express.Request {query: { token?: string }}
-
-router.get("/google", async (req: GoogleAuthRequest, res): Promise<void> => {
+// ✅ Google Sign-In Route (Existing Users)
+router.post("/google/signin", async (req, res): Promise<void> => {
   try {
-    const { token } = req.query;
+    const { token } = req.body;
     if (!token) {
       res.status(400).json({ error: "No Google token provided." });
       return;
@@ -44,13 +43,13 @@ router.get("/google", async (req: GoogleAuthRequest, res): Promise<void> => {
       res.status(404).json({ error: "User not found. Please sign up first." });
       return;
     }
-
     // ✅ Generate JWT
     const authToken = jwt.sign(
       { id: user._id.toString(), username: user.username },
       SAUCE,
       { expiresIn: "1d" }
     );
+    const web = await Website.find({ dev: user._id });
 
     // ✅ Set JWT as cookie
     res.cookie("Authorization", `Bearer ${authToken}`, {
@@ -60,8 +59,8 @@ router.get("/google", async (req: GoogleAuthRequest, res): Promise<void> => {
       maxAge: 24 * 60 * 60 * 1000, // 1 day
     });
 
-    res.status(200).json({ user });
-  } catch (err: unknown) {
+    res.status(200).json({ user, web });
+  } catch (err) {
     console.error("Google Sign-In Error:", err);
     res.status(500).json({ error: "Google authentication failed" });
   }
@@ -182,7 +181,7 @@ router.post('/twoauth', async(req,res):Promise<void>=>{
     console.error("Signin Error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
-})
+});
 // **User Edit**
 router.put("/user", check, async (req, res):Promise<void> => {
   try {
@@ -247,7 +246,7 @@ router.delete("/user", check, async (req, res): Promise<void> => {
   }
 });
 
-router.post("/google", async (req, res):Promise<void> => {
+router.post("/google/signup", async (req, res):Promise<void> => {
   try {
     const { token } = req.body;
 
@@ -298,7 +297,7 @@ router.post("/google", async (req, res):Promise<void> => {
       maxAge: 24 * 60 * 60 * 1000, // 1 day
     });
 
-    res.status(200).json({ user });
+    res.status(200).json({ user, web:[]});
   } catch (err) {
     console.error("Google Auth Error:", err);
     res.status(500).json({ error: "Google authentication failed" });
