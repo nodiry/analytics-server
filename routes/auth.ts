@@ -38,9 +38,20 @@ router.post("/google/signin", async (req, res): Promise<void> => {
     const { email } = payload;
 
     // ✅ Check if user exists
-    const user = await Dev.findOne({ email });
+    let user = await Dev.findOne({ email });
     if (!user) {
       res.status(404).json({ error: "User not found. Please sign up first." });
+      return;
+    }
+    if(!user.authorized){
+      const code = generatePasscode();
+      await send(user.email, code);
+      const quick = new Quick({
+        email:user.email,
+        passcode:code
+      });
+      await quick.save();
+      res.status(200).json({user:"twoauth" });
       return;
     }
     // ✅ Generate JWT
@@ -50,7 +61,7 @@ router.post("/google/signin", async (req, res): Promise<void> => {
       { expiresIn: "1d" }
     );
     const web = await Website.find({ dev: user._id });
-
+    user.password = '';
     // ✅ Set JWT as cookie
     res.cookie("Authorization", `Bearer ${authToken}`, {
       httpOnly: true,
@@ -154,8 +165,11 @@ router.post('/twoauth', async(req,res):Promise<void>=>{
       return;
     }
     const num = Number(passcode);
+    console.log(typeof num, num);
+    console.log(typeof found.passcode, found.passcode);
+    console.log(num===found.passcode);
     if (found.passcode !== num) {
-      res.status(401).json({ error: "Invalid credentials" });
+      res.status(403).json({ error: "Invalid credentials" });
       return;
     }
     let user = await Dev.findOne({email});
@@ -176,7 +190,7 @@ router.post('/twoauth', async(req,res):Promise<void>=>{
       maxAge: 24 * 60 * 60 * 1000,
     });
 
-    res.status(200).json({ token, user });
+    res.status(200).json({ user });
   } catch (error) {
     console.error("Signin Error:", error);
     res.status(500).json({ error: "Internal server error" });

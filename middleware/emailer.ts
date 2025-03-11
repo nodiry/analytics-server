@@ -7,9 +7,9 @@ export const send = async (receiver:string, passcode:number):Promise<String>=>{
     const success : string = 'success', fail : string = 'fail';
     try {
         await resend.emails.send({ 
-            from:"no-reply@amir.glasscube.io",
+            from:"no-reply@glasscube.io",
             to:receiver,
-            replyTo:"support@amir.glasscube.io",
+            replyTo:"support@glasscube.io",
             subject:"One time passcode arrived.",
             html:`<p>Sir one time passcode has been sent 
             <strong>${passcode}<strong>
