@@ -1,18 +1,21 @@
-import 'bun';
+import "bun";
 import express from "express";
 import jwt from "jsonwebtoken";
-import  {Dev}  from "../models/dev";
+import { Dev } from "../models/dev";
 import { hash, verify } from "../utils/hash";
-import  {check}  from '../middleware/auth';
-import { Quick } from '../models/quick';
-import { generatePasscode } from '../utils/key_maker';
-import { send } from '../middleware/emailer';
-import { Website } from '../models/website';
-import { Metric } from '../models/metric';
+import { check } from "../middleware/auth";
+import { Quick } from "../models/quick";
+import { generatePasscode } from "../utils/key_maker";
+import { send } from "../middleware/emailer";
+import { Website } from "../models/website";
+import { Metric } from "../models/metric";
 import { OAuth2Client } from "google-auth-library";
+import logger from "../middleware/logger";
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const SAUCE = process.env.SAUCE || "chubingo";
-interface AuthRequest extends express.Request { user?: { id: string; username: string }}
+interface AuthRequest extends express.Request {
+  user?: { id: string; username: string };
+}
 const router = express.Router();
 // ✅ Google Sign-In Route (Existing Users)
 router.post("/google/signin", async (req, res): Promise<void> => {
@@ -43,15 +46,15 @@ router.post("/google/signin", async (req, res): Promise<void> => {
       res.status(404).json({ error: "User not found. Please sign up first." });
       return;
     }
-    if(!user.authorized){
+    if (!user.authorized) {
       const code = generatePasscode();
       await send(user.email, code);
       const quick = new Quick({
-        email:user.email,
-        passcode:code
+        email: user.email,
+        passcode: code,
       });
       await quick.save();
-      res.status(200).json({user:"twoauth" });
+      res.status(200).json({ user: "twoauth" });
       return;
     }
     // ✅ Generate JWT
@@ -61,7 +64,7 @@ router.post("/google/signin", async (req, res): Promise<void> => {
       { expiresIn: "1d" }
     );
     const web = await Website.find({ dev: user._id });
-    user.password = '';
+    user.password = "";
     // ✅ Set JWT as cookie
     res.cookie("Authorization", `Bearer ${authToken}`, {
       httpOnly: true,
@@ -77,20 +80,28 @@ router.post("/google/signin", async (req, res): Promise<void> => {
   }
 });
 // **Signup**
-router.post("/signup", async (req, res):Promise<void>=> {
+router.post("/signup", async (req, res): Promise<void> => {
   try {
-    const { username, firstname,email,lastname, password } = req.body;
-    if (!username || !password)  {
+    const { username, firstname, email, lastname, password } = req.body;
+    if (!username || !password) {
       res.status(400).json({ error: "Missing required fields" });
-      return }
+      return;
+    }
 
     const exists = await Dev.findOne({ username });
-  if (exists)  {
-    res.status(409).json({ error: "Username already taken" });
-    return }
+    if (exists) {
+      res.status(409).json({ error: "Username already taken" });
+      return;
+    }
 
     const hashed = await hash(password);
-    const newUser = new Dev({ username, firstname, lastname, password: hashed, email });
+    const newUser = new Dev({
+      username,
+      firstname,
+      lastname,
+      password: hashed,
+      email,
+    });
     await newUser.save();
 
     res.status(201).json({ message: "User created successfully" });
@@ -108,7 +119,7 @@ router.post("/signin", async (req, res): Promise<void> => {
     }
     // Check if it's username or email being passed
     let user = await Dev.findOne({ $or: [{ username }, { email }] });
-    
+
     if (!user) {
       res.status(401).json({ error: "Invalid credentials" });
       return;
@@ -120,22 +131,25 @@ router.post("/signin", async (req, res): Promise<void> => {
       return;
     }
 
-    const token = jwt.sign({ id: user._id, username: user.username},
-      process.env.SAUCE || "chubingo", { expiresIn: "1d" });
+    const token = jwt.sign(
+      { id: user._id, username: user.username },
+      process.env.SAUCE || "chubingo",
+      { expiresIn: "1d" }
+    );
 
-    if(user.password) user.password= '';
+    if (user.password) user.password = "";
 
-    if(!user.authorized){
+    if (!user.authorized) {
       const code = generatePasscode();
       await send(user.email, code);
       const quick = new Quick({
-        email:user.email,
-        passcode:code
+        email: user.email,
+        passcode: code,
       });
       await quick.save();
-      res.status(200).json({user:"twoauth" });
+      res.status(200).json({ user: "twoauth" });
     }
-    const web = await Website.find({dev:user._id});
+    const web = await Website.find({ dev: user._id });
 
     res.cookie("Authorization", `Bearer ${token}`, {
       httpOnly: true,
@@ -150,68 +164,109 @@ router.post("/signin", async (req, res): Promise<void> => {
   }
 });
 // **TwoAuth**
-router.post('/twoauth', async(req,res):Promise<void>=>{
+router.post("/twoauth", async (req, res): Promise<void> => {
   try {
     const { email, passcode } = req.body;
-    if ( !email && !passcode) {
+    if (!email && !passcode) {
       res.status(400).json({ error: "Missing required fields" });
       return;
     }
     // Check if it's username or email being passed
-    let found = await Quick.findOneAndDelete({email:email});
-    
+    let found = await Quick.findOneAndDelete({ email: email });
+
     if (!found) {
       res.status(401).json({ error: "Invalid credentials" });
       return;
     }
     const num = Number(passcode);
-    console.log(typeof num, num);
-    console.log(typeof found.passcode, found.passcode);
-    console.log(num===found.passcode);
     if (found.passcode !== num) {
       res.status(403).json({ error: "Invalid credentials" });
       return;
     }
-    let user = await Dev.findOne({email});
+    let user = await Dev.findOne({ email });
     if (!user) {
-      res.status(404).json({message:'user does not exist'});
+      res.status(404).json({ message: "user does not exist" });
       return;
     }
-    const token = jwt.sign({ id: user._id, username: user.username},
-      process.env.SAUCE || "chubingo", { expiresIn: "1d" });
+    const token = jwt.sign(
+      { id: user._id, username: user.username },
+      process.env.SAUCE || "chubingo",
+      { expiresIn: "1d" }
+    );
 
-      user.authorized = true;
-      await user.save();
-    if(user.password) user.password= '';
+    user.authorized = true;
+    await user.save();
+
+    if (user.password) user.password = "";
+
     res.cookie("Authorization", `Bearer ${token}`, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
       maxAge: 24 * 60 * 60 * 1000,
     });
-
-    res.status(200).json({ user });
+    const web = await Website.find({ dev: user._id });
+    res.status(200).json({ user, web });
   } catch (error) {
     console.error("Signin Error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
-// **User Edit**
-router.put("/user", check, async (req, res):Promise<void> => {
+// TwoAuth
+router.post("/forgot", async (req, res): Promise<void> => {
   try {
-    const { username, firstname, lastname,email, img, password } = req.body;
+    const { email } = req.body;
+
+    if (!email) {
+      res.status(401).json({ error: "Missing required fields" });
+      return;
+    }
+    const user = await Dev.findOne({ email });
+    if (!user) {
+      res.status(404).json({ message: "user does not exist" });
+      return;
+    }
+    const token = jwt.sign({ id: user._id, username: user.username }, SAUCE, {
+      expiresIn: "1d",
+    });
+    res.cookie("Authorization", `Bearer ${token}`, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 24 * 60 * 60 * 1000,
+    });
+    const code = generatePasscode();
+    await send(user.email, code);
+    const quick = new Quick({
+      email: user.email,
+      passcode: code,
+    });
+    await quick.save();
+    res.status(200).json({ go: "twoauth" });
+    return;
+  } catch (error) {
+    logger.error("Signin Error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+// **User Edit**
+router.put("/user", check, async (req, res): Promise<void> => {
+  try {
+    const { username, firstname, lastname, email, img, password } = req.body;
     console.log(req.body);
     if (!username) {
       res.status(400).json({ error: "Username required" });
-     return };
+      return;
+    }
 
-    let user = await Dev.findOne({ username:username });
+    let user = await Dev.findOne({ username: username });
     console.log(user);
     if (!user) {
       res.status(404).json({ error: "User not found" });
-      return };
-      const hashed = password ? await hash(password) : user.password;
-    if(!user.password){
+      return;
+    }
+    const hashed = password ? await hash(password) : user.password;
+    if (!user.password) {
       res.status(404).json({ error: "User not found" });
       return;
     }
@@ -229,7 +284,7 @@ router.put("/user", check, async (req, res):Promise<void> => {
 });
 router.delete("/user", check, async (req, res): Promise<void> => {
   try {
-    const  username  = req.body;
+    const username = req.body;
     if (!username) {
       res.status(400).json({ error: "Username required" });
       return;
@@ -245,13 +300,15 @@ router.delete("/user", check, async (req, res): Promise<void> => {
     const websites = await Website.find({ dev: user._id });
 
     // Delete all related data concurrently
-    await Promise.all(websites.map(async (website) => {
-      await Metric.deleteMany({ unique_key: website.unique_key });
-      await Website.deleteOne({ unique_key: website.unique_key });
-    }));
+    await Promise.all(
+      websites.map(async (website) => {
+        await Metric.deleteMany({ unique_key: website.unique_key });
+        await Website.deleteOne({ unique_key: website.unique_key });
+      })
+    );
 
     // Finally, delete the user
-    await Dev.deleteOne({ username:username });
+    await Dev.deleteOne({ username: username });
 
     res.status(200).json({ message: "Account deleted successfully" });
   } catch (error) {
@@ -260,7 +317,7 @@ router.delete("/user", check, async (req, res): Promise<void> => {
   }
 });
 
-router.post("/google/signup", async (req, res):Promise<void> => {
+router.post("/google/signup", async (req, res): Promise<void> => {
   try {
     const { token } = req.body;
 
@@ -273,29 +330,29 @@ router.post("/google/signup", async (req, res):Promise<void> => {
     const payload = ticket.getPayload();
     if (!payload) {
       res.status(400).json({ error: "Invalid Google token" });
-    return;
-      }
+      return;
+    }
 
     const { sub, email, name, picture } = payload;
 
     // Check if user exists
     let user = await Dev.findOne({ email });
 
-    if (!user && email!==undefined) {
+    if (!user && email !== undefined) {
       // Auto-create user without password
       user = new Dev({
         googleId: sub,
         email,
         username: email.split("@")[0],
         firstname: name,
-        image_url: picture
+        image_url: picture,
       });
       await user.save();
     }
-     if (!user || !user._id || !user.username) {
-     res.status(500).json({ error: "User creation failed." });
-     return;
-        }
+    if (!user || !user._id || !user.username) {
+      res.status(500).json({ error: "User creation failed." });
+      return;
+    }
     // Generate JWT
     const authToken = jwt.sign(
       { id: user._id, username: user.username },
@@ -311,10 +368,25 @@ router.post("/google/signup", async (req, res):Promise<void> => {
       maxAge: 24 * 60 * 60 * 1000, // 1 day
     });
 
-    res.status(200).json({ user, web:[]});
+    res.status(200).json({ user, web: [] });
   } catch (err) {
     console.error("Google Auth Error:", err);
     res.status(500).json({ error: "Google authentication failed" });
+  }
+});
+
+router.post("/logout", check, async (req, res): Promise<void> => {
+  try {
+    res.clearCookie("Authorization", {
+      httpOnly: true, // Secure, prevents JavaScript access
+      secure: true, // Only send over HTTPS
+      sameSite: "strict", // Prevent CSRF attacks
+      path: "/", // Clear cookie for entire domain
+    });
+    res.json({ message: "Logged out successfully" });
+  } catch (error) {
+    logger.error("error happened while logging out" + error);
+    res.status(500).json({ message: "error happened while logging out" });
   }
 });
 
